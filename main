@@ -1,0 +1,114 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <SoftwareSerial.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+SoftwareSerial laserSerial(2, 3); // RX=2, TX=3
+
+const byte startCmd[] = {0xAE, 0xA7, 0x04, 0x00, 0x0E, 0x12, 0xBC, 0xBE};
+
+byte state = 0;
+byte packet[32];
+byte pIdx = 0;
+float lastDist = -1.0;
+bool isSensorError = true;
+
+void setup() {
+  Serial.begin(115200); 
+  laserSerial.begin(9600);
+  
+  Wire.setClock(100000); 
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("OLED Error"));
+  }
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  display.display();
+
+  delay(1000); 
+  laserSerial.write(startCmd, sizeof(startCmd));
+  Serial.println(F("System Initialized. Laser Running..."));
+}
+
+void loop() {
+  while (laserSerial.available() > 0) {
+    byte b = laserSerial.read();
+    parseByteStream(b);
+  }
+  static unsigned long lastOledTime = 0;
+  if (millis() - lastOledTime >= 500) {
+    updateOLED();
+    lastOledTime = millis();
+  }
+
+  static unsigned long lastCtrlTime = 0;
+  if (millis() - lastCtrlTime >= 50) {
+    executePIDControl();
+    lastCtrlTime = millis();
+  }
+
+}
+
+void parseByteStream(byte b) {
+  switch (state) {
+    case 0: 
+      if (b == 0xAE) state = 1;
+      break;
+    case 1:
+      if (b == 0xA7) state = 2; else state = 0;
+      break;
+    case 2: 
+      packet[0] = b; 
+      pIdx = 1;
+      if (b == 0x17 || b == 0x04) state = 3; 
+      else state = 0;
+      break;
+    case 3: 
+      packet[pIdx++] = b;
+      
+      if (packet[0] == 0x17 && pIdx >= 23) {
+        uint16_t rawVal = (packet[5] << 8) | packet[6]; 
+        
+        if (rawVal == 607 || rawVal == 0) {
+          isSensorError = true;
+        } else {
+          isSensorError = false;
+          lastDist = rawVal / 10.0; 
+          
+          Serial.print(F("Distance: ")); Serial.print(lastDist, 2); Serial.println(F(" m"));
+        }
+        state = 0;
+      } 
+      else if (packet[0] == 0x04 && pIdx >= 5) {
+        state = 0;
+      }
+      if (pIdx >= 30) state = 0;
+      break;
+  }
+}
+
+void updateOLED() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print(F("Lidar 200m Monitor"));
+  
+  display.setCursor(0, 25);
+  if (isSensorError) {
+    display.setTextSize(2);
+    display.print(F("BLIND/ALARM")); 
+  } else if (lastDist > 0) {
+    display.setTextSize(3);
+    display.print(lastDist, 1);
+    display.setTextSize(1);
+    display.print(F(" m"));
+  } else {
+    display.setTextSize(1);
+    display.print(F("WAITING STREAM..."));
+  }
+  display.display();
+}
