@@ -1,6 +1,9 @@
 
  JC02-1 激光测距模组扩展库与位移控制集成系统 (基于 Arduino Nano)
 
+ <img width="4000" height="3000" alt="20260406_160911" src="https://github.com/user-attachments/assets/59d4815a-8391-4914-833a-72a6cca04096" />
+
+
 学习工业级 JC02-1 远程激光测距模组 (200m-2000m) 出现了一系列故障原因。
 本次设计重点解决了在资源受限（2KB SRAM）平台上，软件串口（SoftwareSerial）与 I2C OLED 屏幕、PID 控制器因中断阻塞和内存溢出导致的系统卡死、丢包、持续触发盲区报警（`607` 错误码）等核心工程问题。
 
